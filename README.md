@@ -66,7 +66,7 @@ The `sign_and_submit()` function should do the following:
 1. Generate a predictable bytestring `Bf` from the form fields (excluding `csrf-token`, `response` and `key-id`). A good solution would be JSON encoded dictionary sorted by key name.
 2. Generate a 32 byte hash `Hf` from the bytestring `Bf`.
 3. Perform an authentication against all known Webauthn keys for the current user, using the challenge `Hf`.
-4. Save the Webauthn key id and response to the fields `response` and `key-id`.
+4. Save the Webauthn key id and response to the fields `key-id` and `response`.
 5. Submit the form.
 
 The server should then perform the following:
