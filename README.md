@@ -6,15 +6,15 @@ I recently though about the difficulties in secure a database and its data when 
 
 ## General suggestion
 The federated login system is likely correct (as the threats on most days are likely small), so we should mostly trust it.
-* **Login**: We hold a database table with Webauthn data for each persistent identifier of a user received from the IdP. Users authenticated by the IdP who doesn't hold a valid entry in the webauthn data table should not be able to log in. After a successful federated login, the user must be forced to authenticate using Webauthn. If there is no `WEBAUTHN_TOKEN` for the current user, then the users in `TOKEN_ADMINISTRATOR` should be notified and the user must be denied access.
-* **Administration of Webauthn data**: Only users marked by the IdP (or hard coded in a configuration file, depending on how much the IdP is trusted) must be able to add or remove Webauthn data for other users.
-* **Multiple keys allowed**: All users should be able to add or remove Webauthn data for themselves.
-* **Tracability**: Webauthn data can never be removed, only marked as revoked.
+* **Login**: We hold a database table with Webauthn keys for each persistent identifier of a user received from the IdP. Users authenticated by the IdP who doesn't hold a valid entry in the webauthn keys table should not be able to log in. After a successful federated login, the user must be forced to authenticate using Webauthn. If there is no `WEBAUTHN_TOKEN` for the current user, then the users in `TOKEN_ADMINISTRATOR` should be notified and the user must be denied access.
+* **Administration of Webauthn keys**: Only users marked by the IdP (or hard coded in a configuration file, depending on how much the IdP is trusted) must be able to add or remove Webauthn keys for other users.
+* **Multiple keys allowed**: All users should be able to add or remove Webauthn keys for themselves.
+* **Tracability**: Webauthn keys can never be removed, only marked as revoked.
 * **Accountability**: All (privileged) actions are signed by the Webauthn token. See [signed actions](#signed-actions).
 
 ## Technical implementation
 ### Database tables
-Rows similar to the meta-sql below should be in our local database. The Webauthn data must not be fetched from the IdP, as this gives back the extra trust we tried to deny the IdP.
+Rows similar to the meta-sql below should be in our local database. The Webauthn keys must not be fetched from the IdP, as this gives back the extra trust we tried to deny the IdP.
 
 #### CHALLENGE
 | CHALLENGE   | GENERATED_AT                       | USED                   |
@@ -24,9 +24,9 @@ Rows similar to the meta-sql below should be in our local database. The Webauthn
 Unused challenges may (but should not) be deleted after a certain time, used challenges may not. All tables which has a challenge should refer to this table.
 
 #### ROW_SIGNATURE
-| ID          | CHALLENGE_SEED                           | SIGN_KEY_ID                                | SERIALIZATION_VERSION | RESPONSE |
-| ----------- | ---------------------------------------- | ------------------------------------------ | --------------------- | -------- |
-| PRIMARY KEY | NOT NULL REFERENCES(CHALLENGE.CHALLENGE) | NOT NULL REFERENCES(WEBAUTHN_TOKEN.KEY_ID) | NOT NULL              | NOT NULL |
+| ID          | CHALLENGE_SEED                           | SIGN_KEY_ID                            | SERIALIZATION_VERSION | RESPONSE |
+| ----------- | ---------------------------------------- | -------------------------------------- | --------------------- | -------- |
+| PRIMARY KEY | NOT NULL REFERENCES(CHALLENGE.CHALLENGE) | NOT NULL REFERENCES(WEBAUTHN_TOKEN.ID) | NOT NULL              | NOT NULL |
 
 #### TOKEN_ADMINISTRATOR
 | USER        | SIGNATURE                             |
@@ -34,14 +34,14 @@ Unused challenges may (but should not) be deleted after a certain time, used cha
 | PRIMARY KEY | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
 
 #### WEBAUTHN_TOKEN
-| KEY_ID      | PUB_KEY  | USER     | SIGNATURE                             |
-| ----------- | -------- | -------- | ------------------------------------- |
-| PRIMARY KEY | NOT NULL | NOT NULL | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
+| ID          | KEY_ID | PUB_KEY  | USER     | SIGNATURE                             |
+| ------------| ------ | -------- | -------- | ------------------------------------- |
+| PRIMARY KEY | UNIQUE | NOT NULL | NOT NULL | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
 
-The database should be set up in such a way that a self signed (where `SIGNATURE.SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation.
+The database should be set up in such a way that a self signed (where `SIGNATURE.SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation. In this example table, the `WEBAUTHN_TOKEN` is invalidated by setting the KEY_ID to `NULL`. This makes it so that data can still be validated, but new Webauthn requests cannot be performed.
 
 ### Signed actions
-All security critical actions in the database must be verifiable to a user. For this reason, Webauthn data must be immutable and bound to a user. Removal of Webauthn data must be performed as a flag on the row, and not by actually removing it. If this is not fulfilled, then the data can only be traced to a specific `key-id`, but that's not very useful if it cannot be traced to an actual user.
+All security critical actions in the database must be verifiable to a user. For this reason, Webauthn keys must be immutable and bound to a user. Removal of Webauthn keys must be performed as a flag on the row, and not by actually removing it. If this is not fulfilled, then the data can only be traced to a specific `key-id`, but that's not very useful if it cannot be traced to an actual user.
 
 #### Adding a row to the database
 In this case, we have a logged in user who wants to add a row in a table. The user gets the following form (with labels and layout skipped for simplicity):
@@ -86,7 +86,7 @@ This introduces a very interesting challenge. How do we delete a row in such a w
 If we simply delete rows in the database, then they can still be reinserted if the raw data can be found somewhere else. It also requires that logging is separate for who deleted the post. This removes accountability for the deleted data, though.
 
 ##### Mark it
-To delete the row by marking it the table would have additional fields for deletion in the same way as creation, with a unique `delete-challenge`, `delete-response` and `delete-key-id`. This means that a row with `delete-response` not being `null` can be assumed to be deleted. This would likely require privileged triggers in the database to be enforced though, since the `delete-challenge`, `delete-key-id` and `delete-response` mustn't be nullable after having been set. This still maintains accountability for both creation and deletion of data, even after the deletion.
+To delete the row by marking it the table would have additional fields for deletion in the same way as creation, with a unique `delete-challenge`, `delete-response` and `delete-key-id`. This means that a row with `delete-response` not being `NULL` can be assumed to be deleted. This would likely require privileged triggers in the database to be enforced though, since the `delete-challenge`, `delete-key-id` and `delete-response` mustn't be nullable after having been set. This still maintains accountability for both creation and deletion of data, even after the deletion.
 
 #### Verification
 A reviewer can, at any time, fetch all data from a database for verification. A problem here is that all previous ways of generating a predictable hash from the data of each table must be saved and the correct algorithm is chosen by looking at the `SERIALIZATION_VERSION` for the row. This check should be automated, both on a schedule and when reading security critical rows from the database.
