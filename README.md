@@ -28,9 +28,9 @@ Rows similar to the meta-sql below should be in our local database. The Webauthn
 Unused challenges may (but should not) be deleted after a certain time, used challenges may not. All tables which has a challenge should refer to this table.
 
 #### ROW_SIGNATURE
-| ID          | CHALLENGE_SEED                           | SIGN_KEY_ID                            | SERIALIZATION_VERSION | RESPONSE |
-| ----------- | ---------------------------------------- | -------------------------------------- | --------------------- | -------- |
-| PRIMARY KEY | NOT NULL REFERENCES(CHALLENGE.CHALLENGE) | NOT NULL REFERENCES(WEBAUTHN_TOKEN.ID) | NOT NULL              | NOT NULL |
+| ID          | CHALLENGE_SEED                                  | SIGN_KEY_ID                            | SERIALIZATION_VERSION | RESPONSE |
+| ----------- | ----------------------------------------------- | -------------------------------------- | --------------------- | -------- |
+| PRIMARY KEY | NOT NULL REFERENCES(CHALLENGE.CHALLENGE) UNIQUE | NOT NULL REFERENCES(WEBAUTHN_TOKEN.ID) | NOT NULL              | NOT NULL |
 
 #### TOKEN_ADMINISTRATOR
 | USER        | SIGNATURE                             |
