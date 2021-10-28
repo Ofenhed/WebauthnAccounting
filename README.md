@@ -1,16 +1,12 @@
 # Accountability in federated login systems
-I recently though about the difficulties in secure a database and its data when using federated login when you don't fully trust the identity provider (hereby referred to as IdP). This is a common use case these days, where IdP:s are moved to cloud systems, such as Azure AD. This adds additional threats, both from [state actors with legal rights to force the IdP provider to give them access](https://kryptera.se/molntjanster-och-fisa-702/), but also from [vulnerabilities in the IdP itself](https://www.cvedetails.com/vulnerability-list/vendor_id-26/product_id-38600/Microsoft-Azure-Active-Directory-Connect.html). For this reason, I want a another authentication (and authorization) factor for any such systems.
-
-## Skip federated login
-It could be argued that this threat can be mitigated by not using federated logins. Please don't.
-TODO: Further argue why you should not implement user authentication
+I recently though about the difficulties in secure a database and its data when using federated login when you don't fully trust the identity provider (hereby referred to as IdP). This is a common use case these days, where IdP:s are moved to cloud systems, such as Azure AD. This adds additional threats, both from [state actors with legal rights to force the IdP provider to give them access](https://kryptera.se/molntjanster-och-fisa-702/), but also from [vulnerabilities in the IdP itself](https://www.cvedetails.com/vulnerability-list/vendor_id-26/product_id-38600/Microsoft-Azure-Active-Directory-Connect.html). For this reason, I want a another authentication (and authorization) factor for any such systems. **This document is not an argument against federated login.** Users reuse passwords, and LDAP logins still makes it so that passwords are leaked into unallocated memory or can be sniffed by malware on the server. You should not create your own login system if you don't really have to, and you should treat user's passwords as if they are infected.
 
 ## Webauthn
 Webauthn is an API for accessing devices which can help authencicate a user. It uses public keys, where the hardware keys can be stored on hardware devices. It initially sets up the key by asking the device to generate a public/private keypair. The device responds with a public key and an identifier (where the identifier *may* include the encrypted private key). The server can then provide the identifier and a challenge to the device to get a response verifiable against the previously provided public key.
 
 ## General suggestion
 The federated login system is likely correct (as the threats on most days are likely small), so we should mostly trust it.
-* **Login**: We hold a database table with Webauthn data for each persistent identifier of a user received from the IdP. Users authenticated by the IdP who doesn't hold a valid entry in the webauthn data table should not be able to log in. After a successful federated login, the user should be forced to authenticate using Webauthn.
+* **Login**: We hold a database table with Webauthn data for each persistent identifier of a user received from the IdP. Users authenticated by the IdP who doesn't hold a valid entry in the webauthn data table should not be able to log in. After a successful federated login, the user must be forced to authenticate using Webauthn. If there is no `WEBAUTHN_TOKEN` for the current user, then the users in `TOKEN_ADMINISTRATOR` should be notified and the user must be denied access.
 * **Administration of Webauthn data**: Only users marked by the IdP (or hard coded in a configuration file, depending on how much the IdP is trusted) must be able to add or remove Webauthn data for other users.
 * **Multiple keys allowed**: All users should be able to add or remove Webauthn data for themselves.
 * **Tracability**: Webauthn data can never be removed, only marked as revoked.
@@ -18,6 +14,8 @@ The federated login system is likely correct (as the threats on most days are li
 
 ## Technical implementation
 ### Database tables
+Rows similar to the meta-sql below should be in our local database. The Webauthn data must not be fetched from the IdP, as this gives back the extra trust we tried to deny the IdP.
+
 #### CHALLENGE
 | CHALLENGE   | GENERATED_AT                       | USED                   |
 | ----------- | ---------------------------------- | ---------------------- |
@@ -29,6 +27,10 @@ Unused challenges may (but should not) be deleted after a certain time, used cha
 | ID          | CHALLENGE_SEED                           | SIGN_KEY_ID                               | SERIALIZATION_VERSION | RESPONSE |
 | ----------- | ---------------------------------------- | ----------------------------------------- | --------------------- | -------- |
 | PRIMARY KEY | NOT NULL REFERENCES(CHALLENGE.CHALLENGE) | NOT NULL REFERENCES WEBAUTHN_TOKEN.KEY_ID | NOT NULL              | NOT NULL |
+
+#### TOKEN_ADMINISTRATOR
+| USER        | SIGNATURE                             |
+| PRIMARY KEY | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
 
 #### WEBAUTHN_TOKEN
 | KEY_ID      | PUB_KEY  | USER     | SIGNATURE                             |
@@ -87,3 +89,6 @@ To delete the row by marking it the table would have additional fields for delet
 
 #### Verification
 A reviewer can, at any time, fetch all data from a database for verification. A problem here is that all previous ways of generating a predictable hash from the data of each table must be saved and the correct algorithm is chosen by looking at the `SERIALIZATION_VERSION` for the row. This check should be automated, both on a schedule and when reading security critical rows from the database.
+
+## Result
+If this is implemented, all administrative actions should require a Multi-Factor authentication device to be performed, while authorization can still be controlled centrally, for example in the AD. All actions can also be verified to have originated from a specific user, or to be invalid. New users will have to be added in a local administrative interface, though, since it's not enough to add a user in the IdP.
