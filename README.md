@@ -59,7 +59,6 @@ In this case, we have a logged in user who wants to add a row in a table. The us
   <input type="hidden" name="serialization-version" value="The version of the table. Used to be able to verify older rows after database structure changes." />
   <input type="hidden" name="challenge-seed" value="unpredictable and unique value which has not previously been used in the database" />
   <input type="hidden" name="response" />
-  <input type="hidden" name="key-id" />
   <button onclick="sign_and_submit()">
     Submit
   </button>
@@ -67,18 +66,19 @@ In this case, we have a logged in user who wants to add a row in a table. The us
 ```
 
 The `sign_and_submit()` function should do the following:
-1. Generate a predictable bytestring `Bf` from the form fields (excluding `csrf-token`, `response` and `key-id`). A good solution would be JSON encoded dictionary sorted by key name.
+1. Generate a predictable bytestring `Bf` from the form fields (excluding `csrf-token` and `response`). A good solution would be JSON encoded dictionary sorted by key name.
 2. Generate a 32 byte hash `Hf` from the bytestring `Bf`.
 3. Perform an authentication against all known Webauthn keys for the current user, using the challenge `Hf`.
-4. Save the Webauthn key id and response to the fields `key-id` and `response`.
+4. Save the Webauthn response to the `response` value.
 5. Submit the form.
 
 The server should then perform the following:
 1. Verify that the `challenge-seed` is the same challenge as was sent to the user. This could be saved in cookies, or the server could have it saved in a cookie, or it could just verify that it is a challenge which the server has (recently) generated but not gotten a response to.
-2. Generate a predictable bytestring `Bs` in the same way as `Bf` was generated above.
-3. Generate a 32 byte hash `Hs` from the bytestring `Bs`.
-4. Fetch the public key matching `key-id` from the database, and verify `response` against the challenge `Hs`.
-5. Store everyting except `csrf-token` in the database, to allow for future verification.
+2. Verify that the `response` has the correct flags set. For example; if it's a highly sensitive action and you set `authenticatorSelection.userVerification` to `required`, make sure that `attestationObject.authData.flags.userVerified` in `response` is set to `true`.
+3. Generate a predictable bytestring `Bs` in the same way as `Bf` was generated above.
+4. Generate a 32 byte hash `Hs` from the bytestring `Bs`.
+5. Fetch the public key matching the `result` field `attestationObject.authData.attestationCredentialData.credentialId` from the database, and verify `response` against the challenge `Hs`.
+6. Store everyting except `csrf-token` in the database, to allow for future verification. `SIGN_KEY_ID` may also be stored to simplify future verification.
 
 #### Modifying a row in the database
 Modified rows must replace not only the data it modifies, but also the signature of the user modifiying it. The database should save old rows (and signatures) to be able to track who introduced a change.
@@ -90,7 +90,7 @@ This introduces a very interesting challenge. How do we delete a row in such a w
 If we simply delete rows in the database, then they can still be reinserted if the raw data can be found somewhere else. It also requires that logging is separate for who deleted the post. This removes accountability for the deleted data, though.
 
 ##### Mark it
-To delete the row by marking it the table would have additional fields for deletion in the same way as creation, with a unique `delete-challenge`, `delete-response` and `delete-key-id`. This means that a row with `delete-response` not being `NULL` can be assumed to be deleted. This would likely require privileged triggers in the database to be enforced though, since the `delete-challenge`, `delete-key-id` and `delete-response` mustn't be nullable after having been set. This still maintains accountability for both creation and deletion of data, even after the deletion.
+To delete the row by marking it the table would have additional fields for deletion in the same way as creation, with a foreign key `deleted` pointing to a table `ROW_DELETION_SIGNATURE` (with a similar structure as `ROW_SIGNATURE`). This means that a row with `deleted` not being `NULL` can be assumed to be deleted. This would likely require privileged triggers in the database to be enforced though, since the `deleted` mustn't be nullable after having been set. This still maintains accountability for both creation and deletion of data, even after the deletion.
 
 #### Verification
 A reviewer can, at any time, fetch all data from a database for verification. A problem here is that all previous ways of generating a predictable hash from the data of each table must be saved and the correct algorithm is chosen by looking at the `SERIALIZATION_VERSION` for the row. This check should be automated, both on a schedule and when reading security critical rows from the database.
