@@ -17,7 +17,23 @@ The federated login system is likely correct (as the threats on most days are li
 * **Accountability**: All (privileged) actions are signed by the Webauthn token. See [signed actions](#signed-actions).
 
 ## Technical implementation
+### Database tables
+#### CHALLENGE
+| CHALLENGE   | GENERATED_AT                       | USED                   |
+| PRIMARY KEY | NOT NULL DEFAULT CURRENT_TIMESTAMP | NOT NULL DEFAULT FALSE |
+
+Unused challenges may (but should not) be deleted after a certain time, used challenges may not. All tables which has a challenge should refer to this table.
+
+#### WEBAUTHN_TOKEN
+| KEY_ID      | PUB_KEY  | USER     | CHALLENGE_SEED                           | SIGN_KEY_ID                               | RESPONSE |
+| PRIMARY KEY | NOT NULL | NOT NULL | NOT NULL REFERENCES(CHALLENGE.CHALLENGE) | NOT NULL REFERENCES WEBAUTHN_TOKEN.KEY_ID | NOT NULL |
+
+The database should be set up in such a way that a self signed (where `SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation.
+
 ### Signed actions
+All actions in the database should be verifiable to a user. For this reason, Webauthn data must be immutable and bound to a user. Removal of Webauthn data must be performed as a flag on the row, and not by actually removing it.
+
+#### Adding a row to the database
 In this case, we have a logged in user who wants to add a row in a table. The user gets the following form (with labels and layout skipped for simplicity):
 
 ```html
@@ -26,8 +42,10 @@ In this case, we have a logged in user who wants to add a row in a table. The us
   <input type="text" name="service" />
   <input type="date" name="paid-through" />
   <input type="hidden" name="csrf-token" value="unpredictable value also stored in cookie" />
-  <input type="hidden" name="challenge" value="unpredictable value which has not previously been used in the database" />
+  <input type="hidden" name="table-version" value="The version of the table. Used to be able to verify older rows after database structure changes." />
+  <input type="hidden" name="challenge-seed" value="unpredictable and unique value which has not previously been used in the database" />
   <input type="hidden" name="response" />
+  <input type="hidden" name="key-id" />
   <button onclick="sign_and_submit()">
     Submit
   </button>
@@ -35,16 +53,30 @@ In this case, we have a logged in user who wants to add a row in a table. The us
 ```
 
 The `sign_and_submit()` function should do the following:
-1. Generate a bytestring from the form fields (excluding the `csrf-token`). A good solution would be JSON encoded dictionary sorted by key name.
-2. Generate a hash (TODO: Which length? How big challenges does Webauthn support?)
+1. Generate a predictable bytestring `Bf` from the form fields (excluding `csrf-token`, `response` and `key-id`). A good solution would be JSON encoded dictionary sorted by key name.
+2. Generate a 32 byte hash `Hf` from the bytestring `Bf`.
+3. Perform an authentication against all known Webauthn keys for the current user, using the challenge `Hf`.
+4. Save the Webauthn key id and response to the fields `response` and `key-id`.
+5. Submit the form.
 
-## TODO: Case 1 - We are a service provider
-### Assumptions
-* Our system contains no sensitive data
-* Our system can be used to gain access to customer networks
-* Customer networks contain sensitive data
+The server should then perform the following:
+1. Verify that the `challenge-seed` is the same challenge as was sent to the user. This could be saved in cookies, or the server could have it saved in a cookie, or it could just verify that it is a challenge which the server has (recently) generated but not gotten a response to.
+2. Generate a predictable bytestring `Bs` in the same way as `Bf` was generated above.
+3. Generate a 32 byte hash `Hs` from the bytestring `Bs`.
+4. Fetch the public key matching `key-id` from the database, and verify `response` against the challenge `Hs`.
+5. Store everyting except `csrf-token` in the database, to allow for future verification.
 
-### Suggestion
-TODO
+#### Modifying a row in the database
+Modified rows must replace not only the data it modifies, but also the signature of the user modifiying it. The database should save old rows (and signatures) to be able to track who introduced a change.
 
-## Rationale
+#### Deleting a row in the database
+This introduces a very interesting challenge. How do we delete a row in such a way that it can no longer be used?
+
+##### Simply delete it
+If we simply delete rows in the database, then they can still be reinserted if the raw data can be found somewhere else. It also requires that logging is separate for who deleted the post. This removes accountability for the deleted data, though.
+
+##### Mark it
+To delete the row by marking it the table would have additional fields for deletion in the same way as creation, with a unique `delete-challenge`, `delete-response` and `delete-key-id`. This means that a row with `delete-response` not being `null` can be assumed to be deleted. This would likely require privileged triggers in the database to be enforced though, since the `delete-challenge`, `delete-key-id` and `delete-response` mustn't be nullable after having been set. This still maintains accountability for both creation and deletion of data, even after the deletion.
+
+#### Verification
+A reviewer can, at any time, fetch all data from a database for verification. A problem here is that all previous ways of generating a predictable hash from the data of each table must be saved and the correct algorithm is chosen by looking at the `table-version` for the row. This check should be automated, both on a schedule and when reading security critical rows from the database.
