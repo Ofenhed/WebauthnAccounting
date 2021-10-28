@@ -1,5 +1,5 @@
 # Accountability in federated login systems
-I recently though about the difficulties in secure a database and its data when using federated login when you don't fully trust the identity provider (hereby referred to as IdP). This is a common use case these days, where IdP:s are moved to cloud systems, such as Azure AD. This adds additional threats, both from [state actors with legal rights to force the IdP provider to give them access](https://kryptera.se/molntjanster-och-fisa-702/), but also from [vulnerabilities in the IdP itself](https://www.cvedetails.com/vulnerability-list/vendor_id-26/product_id-38600/Microsoft-Azure-Active-Directory-Connect.html). For this reason, I want a another authentication (and authorization) factor for any such systems. **This document is not an argument against federated login.** Users reuse passwords, and LDAP logins still makes it so that passwords are leaked into unallocated memory or can be sniffed by malware on the server. You should not create your own login system if you don't really have to, and you should treat user's passwords as if they are infected.
+I recently thought about the difficulties in securing a service and its data when using federated login when you don't fully trust the identity provider (hereby referred to as IdP). This is a common use case these days, where IdP:s are moved to cloud systems, such as Azure AD. This adds additional threats, both from [state actors with legal rights to force the IdP provider to give them access](https://kryptera.se/molntjanster-och-fisa-702/), but also from [vulnerabilities in the IdP itself](https://www.cvedetails.com/vulnerability-list/vendor_id-26/product_id-38600/Microsoft-Azure-Active-Directory-Connect.html). For this reason, I want a another authentication (and authorization) factor for any such systems. **This document is not an argument against federated login.** Users reuse passwords, and LDAP logins still makes it so that passwords are leaked into unallocated memory or can be sniffed by malware on the server. You should not create your own login system if you don't really have to, and you should treat user's passwords as if they are infected.
 
 ## Webauthn
 [Webauthn](https://webauthn.me/introduction) is an API for accessing devices which can help authencicate a user. It uses public keys, where the hardware keys can be stored on hardware devices. It initially sets up the key by asking the device to generate a public/private keypair. The device responds with a public key and an identifier (where the identifier *may* include the encrypted private key). The server can then provide the identifier and a challenge to the device to get a response verifiable against the previously provided public key.
@@ -67,8 +67,8 @@ In this case, we have a logged in user who wants to add a row in a table. The us
 
 The `sign_and_submit()` function should do the following:
 1. Generate a predictable bytestring `Bf` from the form fields (excluding `csrf-token` and `response`). A good solution would be JSON encoded dictionary sorted by key name.
-2. Generate a 32 byte hash `Hf` from the bytestring `Bf`.
-3. Perform an authentication against all known Webauthn keys for the current user, using the challenge `Hf`.
+2. (Optional) Generate at least a 32 byte cryptographic hash `Hf` from the bytestring `Bf`. (This step should not be skipped if `Bf` is expected to be big, as this will double the space required to save `response` in the database.)
+3. Perform an authentication against all known Webauthn keys for the current user, using the challenge `Hf` or `Bf`.
 4. Save the Webauthn response to the `response` value.
 5. Submit the form.
 
@@ -76,8 +76,8 @@ The server should then perform the following:
 1. Verify that the `challenge-seed` is the same challenge as was sent to the user. This could be saved in cookies, or the server could have it saved in a cookie, or it could just verify that it is a challenge which the server has (recently) generated but not gotten a response to.
 2. Verify that the `response` has the correct flags set. For example; if it's a highly sensitive action and you set `authenticatorSelection.userVerification` to `required`, make sure that `attestationObject.authData.flags.userVerified` in `response` is set to `true`.
 3. Generate a predictable bytestring `Bs` in the same way as `Bf` was generated above.
-4. Generate a 32 byte hash `Hs` from the bytestring `Bs`.
-5. Fetch the public key matching the `result` field `attestationObject.authData.attestationCredentialData.credentialId` from the database, and verify `response` against the challenge `Hs`.
+4. (Optional) Generate at least a 32 byte cryptographic hash `Hs` from the bytestring `Bs`. (This step must be performed if it's performed on the client above, and must be skipped otherwise)
+5. Fetch the public key matching the `result` field `attestationObject.authData.attestationCredentialData.credentialId` from the database, and verify `response` against the challenge `Hs` or `Bf`.
 6. Store everyting except `csrf-token` in the database, to allow for future verification. `SIGN_KEY_ID` may also be stored to simplify future verification.
 
 #### Modifying a row in the database
