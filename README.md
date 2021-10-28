@@ -40,7 +40,7 @@ Unused challenges may (but should not) be deleted after a certain time, used cha
 The database should be set up in such a way that a self signed (where `SIGNATURE.SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation.
 
 ### Signed actions
-All actions in the database should be verifiable to a user. For this reason, Webauthn data must be immutable and bound to a user. Removal of Webauthn data must be performed as a flag on the row, and not by actually removing it.
+All security critical actions in the database must be verifiable to a user. For this reason, Webauthn data must be immutable and bound to a user. Removal of Webauthn data must be performed as a flag on the row, and not by actually removing it. If this is not fulfilled, then the data can only be traced to a specific `key-id`, but that's not very useful if it cannot be traced to an actual user.
 
 #### Adding a row to the database
 In this case, we have a logged in user who wants to add a row in a table. The user gets the following form (with labels and layout skipped for simplicity):
