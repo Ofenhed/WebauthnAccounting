@@ -42,7 +42,7 @@ Unused challenges may (but should not) be deleted after a certain time, used cha
 | ------------| ----------- | -------- | -------- | ------------------------------------- |
 | PRIMARY KEY | UNIQUE NULL | NOT NULL | NOT NULL | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
 
-The database should be set up in such a way that a self signed (where `SIGNATURE.SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation. In this example table, the `WEBAUTHN_TOKEN` is invalidated by setting the `KEY_ID` to `NULL`. This makes it so that data can still be validated, but new Webauthn requests cannot be performed.
+The database should be set up in such a way that a self signed (where `SIGNATURE.SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation. In this example table, the `WEBAUTHN_TOKEN` is invalidated by setting the `KEY_ID` to `NULL`. This makes it so that data can still be validated, but new Webauthn requests cannot be performed. Note that the `KEY_ID` can be recovered by looking at a matching `ROW_SIGNATURE.RESPONSE`.
 
 ### Signed actions
 All security critical actions in the database must be verifiable to a user. For this reason, Webauthn keys must be immutable and bound to a user. Removal of Webauthn keys must be performed as a flag on the row, and not by actually removing it.
@@ -78,7 +78,7 @@ The server should then perform the following:
 3. Generate a predictable bytestring `Bs` in the same way as `Bf` was generated above.
 4. (Optional) Generate at least a 32 byte cryptographic hash `Hs` from the bytestring `Bs`. (This step must be performed if it's performed on the client above, and must be skipped otherwise)
 5. Fetch the public key matching the `result` field `attestationObject.authData.attestationCredentialData.credentialId` from the database, and verify `response` against the challenge `Hs` or `Bf`.
-6. Store everyting except `csrf-token` in the database, to allow for future verification. `SIGN_KEY_ID` may also be stored to simplify future verification.
+6. Store everyting except `csrf-token` in the database, to allow for future verification. `SIGN_KEY_ID` should also be stored to simplify future verification.
 
 #### Modifying a row in the database
 Modified rows must replace not only the data it modifies, but also the signature of the user modifiying it. The database should save old rows (and signatures) to be able to track who introduced a change.
