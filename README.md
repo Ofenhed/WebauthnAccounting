@@ -20,15 +20,22 @@ The federated login system is likely correct (as the threats on most days are li
 ### Database tables
 #### CHALLENGE
 | CHALLENGE   | GENERATED_AT                       | USED                   |
+| ----------- | ---------------------------------- | ---------------------- |
 | PRIMARY KEY | NOT NULL DEFAULT CURRENT_TIMESTAMP | NOT NULL DEFAULT FALSE |
 
 Unused challenges may (but should not) be deleted after a certain time, used challenges may not. All tables which has a challenge should refer to this table.
 
-#### WEBAUTHN_TOKEN
-| KEY_ID      | PUB_KEY  | USER     | CHALLENGE_SEED                           | SIGN_KEY_ID                               | RESPONSE |
-| PRIMARY KEY | NOT NULL | NOT NULL | NOT NULL REFERENCES(CHALLENGE.CHALLENGE) | NOT NULL REFERENCES WEBAUTHN_TOKEN.KEY_ID | NOT NULL |
+#### ROW_SIGNATURE
+| ID          | CHALLENGE_SEED                           | SIGN_KEY_ID                               | SERIALIZATION_VERSION | RESPONSE |
+| ----------- | ---------------------------------------- | ----------------------------------------- | --------------------- | -------- |
+| PRIMARY KEY | NOT NULL REFERENCES(CHALLENGE.CHALLENGE) | NOT NULL REFERENCES WEBAUTHN_TOKEN.KEY_ID | NOT NULL              | NOT NULL |
 
-The database should be set up in such a way that a self signed (where `SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation.
+#### WEBAUTHN_TOKEN
+| KEY_ID      | PUB_KEY  | USER     | SIGNATURE                             |
+| ----------- | -------- | -------- | ------------------------------------- |
+| PRIMARY KEY | NOT NULL | NOT NULL | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
+
+The database should be set up in such a way that a self signed (where `SIGNATURE.SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation.
 
 ### Signed actions
 All actions in the database should be verifiable to a user. For this reason, Webauthn data must be immutable and bound to a user. Removal of Webauthn data must be performed as a flag on the row, and not by actually removing it.
@@ -42,7 +49,7 @@ In this case, we have a logged in user who wants to add a row in a table. The us
   <input type="text" name="service" />
   <input type="date" name="paid-through" />
   <input type="hidden" name="csrf-token" value="unpredictable value also stored in cookie" />
-  <input type="hidden" name="table-version" value="The version of the table. Used to be able to verify older rows after database structure changes." />
+  <input type="hidden" name="serialization-version" value="The version of the table. Used to be able to verify older rows after database structure changes." />
   <input type="hidden" name="challenge-seed" value="unpredictable and unique value which has not previously been used in the database" />
   <input type="hidden" name="response" />
   <input type="hidden" name="key-id" />
@@ -79,4 +86,4 @@ If we simply delete rows in the database, then they can still be reinserted if t
 To delete the row by marking it the table would have additional fields for deletion in the same way as creation, with a unique `delete-challenge`, `delete-response` and `delete-key-id`. This means that a row with `delete-response` not being `null` can be assumed to be deleted. This would likely require privileged triggers in the database to be enforced though, since the `delete-challenge`, `delete-key-id` and `delete-response` mustn't be nullable after having been set. This still maintains accountability for both creation and deletion of data, even after the deletion.
 
 #### Verification
-A reviewer can, at any time, fetch all data from a database for verification. A problem here is that all previous ways of generating a predictable hash from the data of each table must be saved and the correct algorithm is chosen by looking at the `table-version` for the row. This check should be automated, both on a schedule and when reading security critical rows from the database.
+A reviewer can, at any time, fetch all data from a database for verification. A problem here is that all previous ways of generating a predictable hash from the data of each table must be saved and the correct algorithm is chosen by looking at the `SERIALIZATION_VERSION` for the row. This check should be automated, both on a schedule and when reading security critical rows from the database.
