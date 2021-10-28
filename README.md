@@ -30,6 +30,7 @@ Unused challenges may (but should not) be deleted after a certain time, used cha
 
 #### TOKEN_ADMINISTRATOR
 | USER        | SIGNATURE                             |
+| ----------- | ------------------------------------- |
 | PRIMARY KEY | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
 
 #### WEBAUTHN_TOKEN
