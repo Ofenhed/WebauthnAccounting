@@ -5,7 +5,7 @@ I recently thought about the difficulties in securing a service and its data whe
 [Webauthn](https://webauthn.me/introduction) is an API for accessing devices which can help authencicate a user. It uses public keys, where the hardware keys can be stored on hardware devices. It initially sets up the key by asking the device to generate a public/private keypair. The device responds with a public key and an identifier (where the identifier *may* include the encrypted private key). The server can then provide the identifier and a challenge to the device to get a response verifiable against the previously provided public key.
 
 ### Security notes
-* Make sure that you make a conscious choice if you set `authenticatorSelection.authenticatorAttachment` to `platform`, as this allows for keys stored directly on the user device, which would not provide the same security as the `cross-platform` alternative.
+* Make sure that you make a conscious choice if you don't set `authenticatorSelection.authenticatorAttachment` to `cross-platform`, as the default (`platform`) allows for keys stored directly on the user device, which would not provide the same security as the `cross-platform` alternative.
 * Make sure that the method used for the frontend to get a list of the user's `KEY_ID` has a restrictive CORS policy, so that it cannot easily be extracted to unlock phishing attacks against the user.
 
 ## General suggestion
