@@ -38,9 +38,9 @@ Unused challenges may (but should not) be deleted after a certain time, used cha
 | PRIMARY KEY | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
 
 #### WEBAUTHN_TOKEN
-| ID          | KEY_ID      | PUB_KEY  | USER     | SIGNATURE                             |
-| ------------| ----------- | -------- | -------- | ------------------------------------- |
-| PRIMARY KEY | UNIQUE NULL | NOT NULL | NOT NULL | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
+| ID          | KEY_ID      | PUB_KEY  | USER     | COUNTER  | SIGNATURE                             |
+| ------------| ----------- | -------- | -------- | -------  | ------------------------------------- |
+| PRIMARY KEY | UNIQUE NULL | NOT NULL | NOT NULL | NULL     | NOT NULL REFERENCES(ROW_SIGNATURE.ID) |
 
 The database should be set up in such a way that a self signed (where `SIGNATURE.SIGN_KEY_ID` equals `KEY_ID`) row cannot be added by the database user, so that it can only be setup during first installation. In this example table, the `WEBAUTHN_TOKEN` is invalidated by setting the `KEY_ID` to `NULL`. This makes it so that data can still be validated, but new Webauthn requests cannot be performed. Note that the `KEY_ID` can be recovered by looking at a matching `ROW_SIGNATURE.RESPONSE`.
 
